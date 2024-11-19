@@ -637,6 +637,7 @@ def serialize_frame(
     include_source_context=True,
     max_value_length=None,
     custom_repr=None,
+    is_handling_frame=False,
 ):
     # type: (FrameType, Optional[int], bool, bool, Optional[int], Optional[Callable[..., Optional[str]]]) -> Dict[str, Any]
     f_code = getattr(frame, "f_code", None)
@@ -661,6 +662,9 @@ def serialize_frame(
         "module": module,
         "lineno": tb_lineno,
     }  # type: Dict[str, Any]
+
+    if is_handling_frame:
+        rv["is_handling_frame"] = True
 
     if include_source_context:
         rv["pre_context"], rv["context_line"], rv["post_context"] = get_source_context(
@@ -737,6 +741,7 @@ def single_exception_from_error_tuple(
     exception_id=None,  # type: Optional[int]
     parent_id=None,  # type: Optional[int]
     source=None,  # type: Optional[str]
+    the_prev_top_frame=None,  # type: Optional[FrameType]
 ):
     # type: (...) -> Dict[str, Any]
     """
@@ -802,6 +807,7 @@ def single_exception_from_error_tuple(
             include_source_context=include_source_context,
             max_value_length=max_value_length,
             custom_repr=custom_repr,
+            is_handling_frame=tb.tb_frame == the_prev_top_frame,
         )
         for tb in iter_stacks(tb)
     ]
@@ -971,17 +977,18 @@ def exceptions_from_error_tuple(
             exception_id=0,
             parent_id=0,
         )
+        exceptions.reverse()
 
     else:
         exceptions = []
-        for exc_type, exc_value, tb in walk_exception_chain(exc_info):
+        the_prev_top_frame = None
+        for exc_type, exc_value, tb in reversed(list(walk_exception_chain(exc_info))):
             exceptions.append(
                 single_exception_from_error_tuple(
-                    exc_type, exc_value, tb, client_options, mechanism
+                    exc_type, exc_value, tb, client_options, mechanism, the_prev_top_frame=the_prev_top_frame
                 )
             )
-
-    exceptions.reverse()
+            the_prev_top_frame = tb.tb_frame
 
     return exceptions
 
